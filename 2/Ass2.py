@@ -4,6 +4,7 @@ import random
 import matplotlib.pyplot as plt
 from itertools import product
 
+
 alpha = 0.05
 max_steps = 250
 episodes = 1000000
@@ -12,6 +13,7 @@ epsilon_max = 1.0
 epsilon_min = 0.1
 _lambda = 0.6
 NUMBER_OF_EVAL_SIMS = 200
+EVAL_WITH_DISCOUNT = False
 
 
 def init_Q(env):
@@ -34,6 +36,7 @@ def eps_greedy_policy(epsilon, state, Q, env):
 
 def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
                  epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=True, _lambda=_lambda, alpha=alpha):
+
     Q = init_Q(env)
     total_steps = 0
     epsilon = epsilon_max
@@ -47,7 +50,7 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
         action = eps_greedy_policy(epsilon, state, Q, env)
 
         for step in range(max_steps):
-            # Take action A, ovserve R,S'
+            # Take action A, obvserve R,S'
             new_state, reward, done, _ = env.step(action)
             new_action = eps_greedy_policy(epsilon, new_state, Q, env)
             
@@ -60,9 +63,9 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
             action = new_action
             total_steps += 1
 
-            if total_steps % 1000 == 0:
+            if (total_steps < 20000 and total_steps % 4000 == 0) or (total_steps >= 20000 and total_steps % 20000 == 0):
                 policy = np.argmax(Q, axis=1)
-                policy_evaluate = policy_eval(policy, env)
+                policy_evaluate = policy_eval(policy, env, with_discount=EVAL_WITH_DISCOUNT)
                 policy_vals.append((total_steps, policy_evaluate))
 
             if done:
@@ -77,20 +80,7 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
     return Q, np.argmax(Q, axis=1), policy_vals  # returns Q, the policy and the values of the policy during the run
 
 
-def decode_action(action):
-    if action == 0:
-        return "L"
-    if action == 1:
-        return "D"
-    if action == 2:
-        return "R"
-    if action == 3:
-        return "U"
-    else:
-        return "Unknown"
-
-
-def policy_eval(policy, env):
+def policy_eval(policy, env, with_discount=False):
     """
     policy should be an iterable with length of number of states (action per state)
     """
@@ -100,23 +90,18 @@ def policy_eval(policy, env):
 
         run_reward = 0
         is_done = False
+        steps = 0
         while not is_done:
             state, reward, is_done, _ = env.step(policy[state])
-
-            run_reward += reward
+            steps += 1
+            if with_discount:
+                run_reward += reward * (gamma ** steps)
+            else:
+                run_reward += reward
 
         rewards.append(run_reward)
 
     return np.mean(rewards)
-
-
-def run_on_4_4_lake():
-    env = gym.make('FrozenLake-v0')
-    Q, Policy, policy_vals = sarsa_lambda(env, episodes, max_steps)
-    env.reset()
-    env.render()
-    print(np.array([decode_action(action) for action in Policy]).reshape((4, 4)))
-    print(policy_eval(Policy, env))
 
 
 def show_sim_in_env(env, policy):
@@ -138,8 +123,7 @@ def show_sim_in_env(env, policy):
     print('done in {} steps and reward: {}'.format(num_of_steps, total_reward))
 
 
-def run_on_8_8_lake():
-    env = gym.make('FrozenLake8x8-v0')
+def run_and_create_plot(env):
     alphas = [0.05, 0.1]
     lambdas = [0, 0.6]
     plt.figure(figsize=(12, 7))
@@ -153,15 +137,15 @@ def run_on_8_8_lake():
         show_sim_in_env(env, policy)
 
         plt.plot([x for x, _ in policy_vals], [y for _, y in policy_vals],
-                 label=description)
+                 label=description, alpha=0.6)
 
     plt.xlabel('number of steps')
     plt.ylabel('avarage reward')
     plt.title('Reward For Different Hyper Parameters')
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.savefig('ass2_plot.png')
     plt.show()
 
 
 if __name__ == '__main__':
-    run_on_8_8_lake()
+    env = gym.make('FrozenLake8x8-v0')
+    run_and_create_plot(env)
