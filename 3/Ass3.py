@@ -4,22 +4,25 @@ import random
 import matplotlib.pyplot as plt
 from itertools import product
 
-
-alpha = 0.05
+alpha = 0.02
 max_steps = 500
 episodes = 1000000
 gamma = 0.95
 epsilon_max = 1.0
 epsilon_min = 0.1
-_lambda = 0.9
+_lambda = 0.5
 NUMBER_OF_EVAL_SIMS = 100
 EVAL_WITH_DISCOUNT = False
 
 ACTION_NO = 3
-#Number of Features
-#ToDo: figure out what suppose to be total number of features
-N = 50 
-shape = (N,N,ACTION_NO,N)
+C_P = 4
+C_VEL = 8
+N = C_P * C_VEL
+
+#ToDo:maybe change this
+P = N
+V = N
+shape = (P,V,ACTION_NO)
 
 def eps_greedy_policy(epsilon,state,Q, env):
     if random.uniform(0, 1) < epsilon:
@@ -29,28 +32,22 @@ def eps_greedy_policy(epsilon,state,Q, env):
         new_action = np.argmax(Q[p,v, :])  # exploit
     return new_action
 
-
-#ToDo: maybe initilize the weight with different values and maybe change the shape
-def initWeights():
-    #shape -> pos,vel,action, number of features
-    return np.zeros(shape)
+def init_Weights():   
+    return np.zeros((N,ACTION_NO))
 
 
-def init_E():
-    return np.zeros(shape)
+def init_E(W):
+    return np.zeros_like(W)
 
 
 def init_Q():
     return np.zeros(shape)
 
-
 #ToDo: implement methods
-def initFeatures():
-    #shape -> pos,vel,action, number of features
-    # return np.zeros(shape)
+def getFeatures(p,v):
     raise NotImplementedError
 
-def stochasticGradient(Q_w):
+def stochasticGradient(p,v,W):
     raise NotImplementedError
 
 # float p, float v -> p_index,v_index
@@ -64,45 +61,42 @@ def map_p_v(observation,env):
 
     return p,v
 
-def get_Q_w(X,state,action,W):
-    p,v = state
-    return X[p,v,action] @ W[p,v,action]
+def get_Q(p,v,action,W_a):
+    return getFeatures(p,v) @ W_a
 
 
 def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
                  epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=True, _lambda=_lambda, alpha=alpha,
                  q_approx_func=None):
 
-    X = initFeatures()
-    W = initWeights() # W_j -> (pos,vel,action)
+    # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3) 
+    W = init_Weights()
+    
     total_steps = 0
     epsilon = epsilon_max
     policy_vals = []
 
     for k in range(episodes):
-        
         # init E,S,A
-        E = init_E()
+        E = init_E(W)
         #state = (pos,vel)
         observation = env.reset()
         state = map_p_v(observation,env)
-        Q_w =  init_Q()
-        action = eps_greedy_policy(epsilon, state, Q_w, env)
+        Q =  init_Q()
+        action = eps_greedy_policy(epsilon, state, Q, env)
 
         for step in range(max_steps):
             # Take action A, obvserve R,S'
             observation, reward, done, _ = env.step(action)
             new_state = map_p_v(observation,env)
             #state = (pos,vel)
-            new_action = eps_greedy_policy(epsilon, new_state, Q_w, env)
-            Q_w_new = get_Q_w(X,new_state,new_action,W)
-
-            delta_error = reward + gamma * Q_w_new - Q_w
-            E[state, action] += 1
-            Q_w = np.add(Q_w, np.multiply(alpha * delta_error, E))
-            E = np.multiply(gamma * _lambda, E) + stochasticGradient(Q_w)
+            new_action = eps_greedy_policy(epsilon, new_state, Q, env)
+            p,v = new_state
+            delta_error = reward + gamma * get_Q(p,v,new_action,W[:,new_action]) - get_Q(p,v,action,W[:,action])
+            E[p, action] += 1 # E suppose to be like W shape, so i am not sure what should represent the first dimension
+            E = np.multiply(gamma * _lambda, E) + stochasticGradient(p,v,W)
             deltaW = np.multiply(alpha*delta_error,E)
-        
+    
             W+=deltaW    
             state = new_state
             action = new_action
@@ -110,7 +104,7 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
 
             #ToDo: play with number of steps
             if (total_steps < 20000 and total_steps % 2000 == 0) or (total_steps >= 20000 and total_steps % 7000 == 0):
-                policy = np.argmax(Q_w, axis=2)
+                policy = np.argmax(Q, axis=2)
                 policy_evaluate = policy_eval(policy, env, with_discount=EVAL_WITH_DISCOUNT)
                 policy_vals.append((total_steps, policy_evaluate))
 
@@ -123,7 +117,12 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
         if total_steps > 1e6:
             break
 
-    return Q_w, np.argmax(Q_w, axis=2), policy_vals  # returns Q, the policy and the values of the policy during the run
+    for p in range(N):
+        for v in range(N):
+            for a in range(ACTION_NO):
+                Q[p,v,a] = get_Q(p,v,action,W[a])
+
+    return Q, np.argmax(Q, axis=2), policy_vals  # returns Q, the policy and the values of the policy during the run
 
 
 def policy_eval(policy, env, with_discount=False):
