@@ -24,8 +24,8 @@ C_VEL = list(np.linspace(-0.7, 0.7, 8))
 N = len(C_P) * len(C_VEL)
 
 #ToDo:maybe change this
-P = N
-V = N
+P = len(C_P)
+V = len(C_VEL)
 shape = (P,V,ACTION_NO)
 
 def eps_greedy_policy(epsilon,state,Q, env):
@@ -41,7 +41,7 @@ def init_Weights():
 
 
 def init_E(W):
-    return np.zeros_like(W)
+    return np.zeros((P,V))
 
 
 def init_Q():
@@ -63,17 +63,17 @@ def get_features(p, v):
 
 
 def stochasticGradient(p,v,W):
-    raise NotImplementedError
+    return get_features(p,v)
 
 
 # float p, float v -> p_index,v_index
 def map_p_v(observation,env):
     low = env.observation_space.low #2 dimension
     high = env.observation_space.high #2 dimension
-    dx = (high-low) / N
+    size = (high-low) 
 
-    p = int((observation[0]-low[0])/dx[0])
-    v = int((observation[1]-low[1])/dx[1])
+    p = int(((observation[0]-low[0])/size[0])*P)
+    v = int(((observation[1]-low[1])/size[1])*V)
 
     return p,v
 
@@ -96,24 +96,22 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
         # init E,S,A
         E = init_E(W)
         #state = (pos,vel)
-        observation = env.reset()
-        state = map_p_v(observation,env)
+        state = env.reset()
         Q =  init_Q()
-        action = eps_greedy_policy(epsilon, state, Q, env)
+        action = eps_greedy_policy(epsilon, map_p_v(state,env), Q, env)
 
         for step in range(max_steps):
             # Take action A, obvserve R,S'
-            observation, reward, done, _ = env.step(action)
-            new_state = map_p_v(observation,env)
+            new_state, reward, done, _ = env.step(action)
             #state = (pos,vel)
-            new_action = eps_greedy_policy(epsilon, new_state, Q, env)
+            new_action = eps_greedy_policy(epsilon, map_p_v(new_state,env), Q, env)
             p,v = new_state
             delta_error = reward + gamma * get_Q(p,v,new_action,W[:,new_action]) - get_Q(p,v,action,W[:,action])
-            E[p, action] += 1 # E suppose to be like W shape, so i am not sure what should represent the first dimension
-            E = np.multiply(gamma * _lambda, E) + stochasticGradient(p,v,W)
-            deltaW = np.multiply(alpha*delta_error,E)
+            E[map_p_v(new_state,env)] += 1 # E suppose to be like W shape, so i am not sure what should represent the first dimension
+            E = np.multiply(gamma * _lambda, E) + (stochasticGradient(p,v,W)).reshape((P,V))
+            deltaW = (np.multiply(alpha*delta_error,E)).reshape(P*V)
     
-            W+=deltaW    
+            W[:,action]+=deltaW    
             state = new_state
             action = new_action
             total_steps += 1
@@ -148,12 +146,14 @@ def policy_eval(policy, env, with_discount=False):
     rewards = []
     for i in range(NUMBER_OF_EVAL_SIMS):
         state = env.reset()
+        state = map_p_v(state,env)
 
         run_reward = 0
         is_done = False
         steps = 0
         while not is_done:
             state, reward, is_done, _ = env.step(policy[state])
+            state = map_p_v(state,env)
             steps += 1
             if with_discount:
                 run_reward += reward * (gamma ** steps)
