@@ -15,9 +15,13 @@ NUMBER_OF_EVAL_SIMS = 100
 EVAL_WITH_DISCOUNT = False
 
 ACTION_NO = 3
-C_P = 4
-C_VEL = 8
-N = C_P * C_VEL
+# -1.2 is the leftest position.
+# The env starts at a location between -0.6 and -0.4 randomly.
+# The agents win when he gets to 0.5
+C_P = [-1.2, -0.6, -0.4, 0.5]
+# -0.7 is the min speed, 0.7 is the max speed.
+C_VEL = list(np.linspace(-0.7, 0.7, 8))
+N = len(C_P) * len(C_VEL)
 
 #ToDo:maybe change this
 P = N
@@ -43,12 +47,24 @@ def init_E(W):
 def init_Q():
     return np.zeros(shape)
 
-#ToDo: implement methods
-def getFeatures(p,v):
-    raise NotImplementedError
+
+def get_features(p, v):
+    """
+    returns a vector phi that each entry is computed feature for given p, v
+    """
+    # reshape to make it a matrix with one row (so we can transpose it later)
+    prod = product(C_P, C_VEL)
+    C = [np.array(val).reshape((1, -1)) for val in prod]
+    p_v = np.array([p, v]).reshape((1, -1)).T
+    X = np.array([p_v - c_entry.T for c_entry in C])
+    inv_cov = np.linalg.inv(np.diag([0.04, 0.0004]))
+    phi = np.array([np.e ** (-(xi.T @ inv_cov @ xi) / 2) for xi in X])
+    return np.squeeze(phi)   # get rid of 2 unnecessary dimensions
+
 
 def stochasticGradient(p,v,W):
     raise NotImplementedError
+
 
 # float p, float v -> p_index,v_index
 def map_p_v(observation,env):
@@ -62,7 +78,7 @@ def map_p_v(observation,env):
     return p,v
 
 def get_Q(p,v,action,W_a):
-    return getFeatures(p,v) @ W_a
+    return get_features(p, v) @ W_a
 
 
 def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
