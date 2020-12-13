@@ -4,11 +4,13 @@ import random
 import matplotlib.pyplot as plt
 from itertools import product
 
+DEBUG = True
+
 alpha = 0.02
 max_steps = 500
 episodes = 1000000
 gamma = 0.95
-epsilon_max = 1.0
+epsilon_max = 0.8
 epsilon_min = 0.1
 _lambda = 0.5
 NUMBER_OF_EVAL_SIMS = 100
@@ -81,9 +83,9 @@ def get_Q(p,v,action,W_a):
     return get_features(p, v) @ W_a
 
 
+
 def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
-                 epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=True, _lambda=_lambda, alpha=alpha,
-                 q_approx_func=None):
+                 epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=True, _lambda=_lambda, alpha=alpha):
 
     # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3) 
     W = init_Weights()
@@ -104,37 +106,44 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
             # Take action A, obvserve R,S'
             new_state, reward, done, _ = env.step(action)
             #state = (pos,vel)
-            new_action = eps_greedy_policy(epsilon, map_p_v(new_state,env), Q, env)
+            curr_map_p_v = map_p_v(new_state,env)
+            new_action = eps_greedy_policy(epsilon, curr_map_p_v, Q, env)
             p,v = new_state
-            delta_error = reward + gamma * get_Q(p,v,new_action,W[:,new_action]) - get_Q(p,v,action,W[:,action])
+
+            curr_Q_p_v_a = get_Q(p,v,action,W[:,action])
+            next_Q_p_v_a = get_Q(p,v,new_action,W[:,new_action])
+
+            delta_error = reward + gamma * next_Q_p_v_a  - curr_Q_p_v_a
             E[map_p_v(new_state,env)] += 1 # E suppose to be like W shape, so i am not sure what should represent the first dimension
             E = np.multiply(gamma * _lambda, E) + (stochasticGradient(p,v,W)).reshape((P,V))
             deltaW = (np.multiply(alpha*delta_error,E)).reshape(P*V)
     
-            W[:,action]+=deltaW    
+            W[:,action]+=deltaW
+            Q[curr_map_p_v[0],curr_map_p_v[1],action] = curr_Q_p_v_a 
             state = new_state
             action = new_action
             total_steps += 1
 
             #ToDo: play with number of steps
-            if (total_steps < 20000 and total_steps % 2000 == 0) or (total_steps >= 20000 and total_steps % 7000 == 0):
+            if (total_steps < 20000 and total_steps % 2000 == 0) or (total_steps >= 20000 and total_steps % 8000 == 0):
                 policy = np.argmax(Q, axis=2)
                 policy_evaluate = policy_eval(policy, env, with_discount=EVAL_WITH_DISCOUNT)
+                show_sim_in_env(env,policy)
                 policy_vals.append((total_steps, policy_evaluate))
+                if DEBUG:
+                    print("current epsilon:{0:.3f}".format(epsilon))
+                    print("policy_eval:\n{}".format(policy.reshape(P,V)))
+                    print("weight avg:{}".format(np.mean(W)))
+
 
             if done:
                 break
         
         if is_decay:
-            epsilon = epsilon_min + (epsilon_max - epsilon_min) * np.exp(-0.00005 * k)
+            epsilon = epsilon_min + (epsilon_max - epsilon_min) * np.exp(-0.005 * k)
 
         if total_steps > 1e6:
             break
-
-    for p in range(N):
-        for v in range(N):
-            for a in range(ACTION_NO):
-                Q[p,v,a] = get_Q(p,v,action,W[a])
 
     return Q, np.argmax(Q, axis=2), policy_vals  # returns Q, the policy and the values of the policy during the run
 
@@ -167,6 +176,7 @@ def policy_eval(policy, env, with_discount=False):
 
 def show_sim_in_env(env, policy):
     state = env.reset()
+    state = map_p_v(state,env)
     env.render()
 
     total_reward = 0
@@ -176,17 +186,20 @@ def show_sim_in_env(env, policy):
     while not is_done:
         action = np.argmax(policy[state])
         state, step_reward, is_done, _ = env.step(action)
+        state = map_p_v(state,env)
         total_reward += step_reward
 
         num_of_steps += 1
         env.render()
 
-    print('done in {} steps and reward: {}'.format(num_of_steps, total_reward))
+    if DEBUG:
+        print('done in {} steps and reward: {}'.format(num_of_steps, total_reward))
 
 
 def run_and_create_plot(env):
-    alphas = [0.05, 0.1]
-    lambdas = [0, 0.6]
+    global alpha,_lambda
+    alphas = [alpha]
+    lambdas = [_lambda]
     plt.figure(figsize=(12, 7))
 
     for alpha, _lambda in product(alphas, lambdas):
@@ -209,4 +222,5 @@ def run_and_create_plot(env):
 
 if __name__ == '__main__':
     env = gym.make('MountainCar-v0')
+    env._max_episode_steps = 500
     run_and_create_plot(env)
