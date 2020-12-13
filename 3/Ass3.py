@@ -10,8 +10,8 @@ alpha = 0.02
 max_steps = 500
 episodes = 1000000
 gamma = 0.95
-epsilon_max = 0.8
-epsilon_min = 0.1
+epsilon_max = 0.1
+epsilon_min = 0.005
 _lambda = 0.5
 NUMBER_OF_EVAL_SIMS = 100
 EVAL_WITH_DISCOUNT = False
@@ -20,7 +20,9 @@ ACTION_NO = 3
 # -1.2 is the leftest position.
 # The env starts at a location between -0.6 and -0.4 randomly.
 # The agents win when he gets to 0.5
-C_P = [-1.2, -0.6, -0.4, 0.5]
+# C_P = [-1.2, -0.6, -0.4, 0.5]
+C_P = list(np.linspace(-1.2, 0.6, 4))
+
 # -0.7 is the min speed, 0.7 is the max speed.
 C_VEL = list(np.linspace(-0.7, 0.7, 8))
 N = len(C_P) * len(C_VEL)
@@ -93,13 +95,13 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
     total_steps = 0
     epsilon = epsilon_max
     policy_vals = []
+    Q =  init_Q()
 
     for k in range(episodes):
         # init E,S,A
         E = init_E(W)
         #state = (pos,vel)
-        state = env.reset()
-        Q =  init_Q()
+        state = env.reset() 
         action = eps_greedy_policy(epsilon, map_p_v(state,env), Q, env)
 
         for step in range(max_steps):
@@ -115,11 +117,11 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
 
             delta_error = reward + gamma * next_Q_p_v_a  - curr_Q_p_v_a
             E[map_p_v(new_state,env)] += 1 # E suppose to be like W shape, so i am not sure what should represent the first dimension
+            Q[:,:,action] = np.add(Q[:,:,action], np.multiply(alpha * delta_error, E))
             E = np.multiply(gamma * _lambda, E) + (stochasticGradient(p,v,W)).reshape((P,V))
             deltaW = (np.multiply(alpha*delta_error,E)).reshape(P*V)
-    
             W[:,action]+=deltaW
-            Q[curr_map_p_v[0],curr_map_p_v[1],action] = curr_Q_p_v_a 
+            
             state = new_state
             action = new_action
             total_steps += 1
@@ -127,11 +129,12 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
             #ToDo: play with number of steps
             if (total_steps < 20000 and total_steps % 2000 == 0) or (total_steps >= 20000 and total_steps % 8000 == 0):
                 policy = np.argmax(Q, axis=2)
-                policy_evaluate = policy_eval(policy, env, with_discount=EVAL_WITH_DISCOUNT)
-                show_sim_in_env(env,policy)
+                policy_evaluate = policy_eval(policy, env, with_discount=EVAL_WITH_DISCOUNT)                
                 policy_vals.append((total_steps, policy_evaluate))
                 if DEBUG:
+                    show_sim_in_env(env,policy)
                     print("current epsilon:{0:.3f}".format(epsilon))
+                    print("Total steps:{}".format(total_steps))
                     print("policy_eval:\n{}".format(policy.reshape(P,V)))
                     print("weight avg:{}".format(np.mean(W)))
 
