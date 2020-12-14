@@ -65,7 +65,6 @@ def get_features(p, v):
 def stochasticGradient(p,v,W):
     return get_features(p,v)
 
-
 # float p, float v -> p_index,v_index
 def map_p_v(observation,env):
     low = env.observation_space.low #2 dimension
