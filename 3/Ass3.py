@@ -204,7 +204,7 @@ def run_and_create_plot(env):
     env.reset()
 
     W, policy_vals = sarsa_lambda(env, episodes, max_steps_in_episode, alpha=alpha, _lambda=_lambda)
-    show_sim_in_env(env, W)
+    # show_sim_in_env(env, W)
 
     plt.figure(figsize=(12, 7))
     plt.plot([x for x, _ in policy_vals], [y for _, y in policy_vals])
