@@ -19,29 +19,102 @@ NUMBER_OF_EVAL_SIMS = 100
 EVAL_WITH_DISCOUNT = False
 ACTION_NO = 3
 
-
 # -1.2 is the leftest position.
 # The env starts at a location between -0.6 and -0.4 randomly.
 # The agents win when he gets to 0.5
 # C_P = [-1.2, -0.6, -0.4, 0.5]
-# C_P = list(np.linspace(-1.2, 0.6, 4))
+
 #C_P = list(np.linspace(-1.2, 0.6, 4))
 # -0.7 is the min speed, 0.7 is the max speed.
 #C_VEL = list(np.linspace(-0.7, 0.7, 8))
-C_P = [-1.16,0.08,0.21,0.38]
-C_VEL = [-0.48,-0.43,-0.31,0.03,0.47,0.49,0.65,0.66]
+#N = len(C_P) * len(C_VEL)
 
-N = len(C_P) * len(C_VEL)
+#prod = product(C_P, C_VEL)
+#C = [np.array(val).reshape((1, -1)) for val in prod]
+# C2 = np.array([[0.  , 0.  ],
+#        [0.  , 0.33],
+#        [0.  , 0.67],
+#        [0.  , 1.  ],
+#        [0.33, 0.  ],
+#        [0.33, 0.33],
+#        [0.33, 0.67],
+#        [0.33, 1.  ],
+#        [0.67, 0.  ],
+#        [0.67, 0.33],
+#        [0.67, 0.67],
+#        [0.67, 1.  ],
+#        [1.  , 0.  ],
+#        [1.  , 0.33],
+#        [1.  , 0.67],
+#        [1.  , 1.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ],
+#        [0.  , 0.  ]])
 
-prod = product(C_P, C_VEL)
-C = [np.array(val).reshape((1, -1)) for val in prod]
+N = 32
+# N2 = 64
 
+
+good_centers = []
 
 def init_Weights():   
     return np.zeros((N,ACTION_NO))
 
+
 def init_E():
     return np.zeros((N,ACTION_NO))
+
+
+# def get_features2(_state):
+#     _phi = np.zeros(N2)
+#     for _k in range(N2):
+#         _phi[_k] = np.exp(-np.linalg.norm(_state - C2[_k, :]) ** 2 / 0.05555555555555555)
+#     return _phi
 
 
 def get_features(state):
@@ -65,6 +138,7 @@ def eps_greedy_policy(epsilon,Q):
         new_action = Q.argmax()  # exploit
     return new_action
 
+
 # Returns the state scaled between 0 and 1
 def normalize_state(state):
     p,v = state
@@ -85,13 +159,11 @@ def get_Q_a(features,W_a):
 def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
                  epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=False, _lambda=_lambda, alpha=alpha):
 
-    # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3) 
     W = init_Weights()
     total_steps = 0
     epsilon = epsilon_max
 
-    if DEBUG:
-        first_pass = False
+    d = 0
     
     for k in range(episodes):
         # init E,S,A
@@ -103,9 +175,6 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
 
         for step in range(max_steps):
             total_steps += 1
-            if DEBUG:
-                if first_pass:
-                    env.render()
             # Take action A, obvserve R,S'
             new_state, reward, done, _ = env.step(action)
             new_state = normalize_state(new_state)
@@ -116,10 +185,9 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
             
             if done:
                 delta_error = reward  - curr_Q_p_v_a
-                if DEBUG:
-                     if total_steps % 500 != 0:
-                         first_pass = True
-                     print("step = ",step)
+                if step + 1 < max_steps:
+                    d+=1
+
             else:
                 delta_error = reward + gamma * next_Q_p_v_a  - curr_Q_p_v_a
 
@@ -131,13 +199,6 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
             W+=deltaW
             E = np.multiply(gamma * _lambda, E)
             
-
-            #ToDo: play with number of steps
-            # if (total_steps < 20000 and total_steps % 2000 == 0) or (total_steps >= 20000 and total_steps % 8000 == 0):
-            #     policy_evaluate = policy_eval(W, env, with_discount=EVAL_WITH_DISCOUNT)                
-            #     policy_vals.append((total_steps, policy_evaluate))
-                
-
             state = new_state
             action = new_action
             features = new_features.copy()
@@ -148,7 +209,11 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps,
         if is_decay:
             epsilon = epsilon_min + (epsilon_max - epsilon_min) * np.exp(-0.005 * k)
 
-        if total_steps > 1e6:
+        if total_steps > 30000:
+            global good_centers
+            good_centers = np.append(good_centers,np.array([C_P,C_VEL,d]))
+            if d > 0:
+                print("found good random centers. d: ",d)
             break
 
     return W
@@ -184,50 +249,24 @@ def policy_eval(W, env, with_discount=False):
     return np.mean(rewards)
 
 
-def show_sim_in_env(env, W):
-    state = normalize_state(env.reset())
-    env.render()
-    total_reward = 0
-    is_done = False
-    num_of_steps = 0
-
-    while not is_done:
-        action = np.argmax(get_policy(state,W))
-        state, step_reward, is_done, _ = env.step(action)
-        state = normalize_state(state)
-        total_reward += step_reward
-
-        num_of_steps += 1
-        env.render()
-
-    if DEBUG:
-        print('done in {} steps and reward: {}'.format(num_of_steps, total_reward))
-
-
-def run_and_create_plot(env):
-    global alpha,_lambda
-    alphas = [alpha]
-    lambdas = [_lambda]
-    #plt.figure(figsize=(12, 7))
-
-    for alpha, _lambda in product(alphas, lambdas):
-        description = 'alpha: {}, lambda: {}'.format(alpha, _lambda)
-        print(description)
-
-        W = sarsa_lambda(env, episodes, max_steps, alpha=alpha, _lambda=_lambda)
-        show_sim_in_env(env, W)
-
-        # plt.plot([x for x, _ in policy_vals], [y for _, y in policy_vals],
-        #          label=description, alpha=0.6)
-
-    # plt.xlabel('number of steps')
-    # plt.ylabel('avarage reward')
-    # plt.title('Reward For Different Hyper Parameters')
-    # plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    # plt.show()
-
-
 if __name__ == '__main__':
     env = gym.make('MountainCar-v0')
     env._max_episode_steps = 500
-    run_and_create_plot(env)
+    global C
+
+    while True:
+        C_P = list(np.random.uniform(-1.2,0.6,4))
+        C_VEL = list(np.random.uniform(-0.7,0.7,8))
+        prod = product(C_P, C_VEL)
+        C = [np.array(val).reshape((1, -1)) for val in prod]
+        W = sarsa_lambda(env, episodes, max_steps, alpha=alpha, _lambda=_lambda)
+        s = good_centers.reshape((-1,3))
+        l = 1
+        if len(s) > l:
+            a = s[(s[:,2]).argsort()][-l:,0]
+            b = s[(s[:,2]).argsort()][-l:,1]
+            ah = np.vstack(a)
+            bh = np.vstack(b)
+            print("pos avg",np.array(sorted(np.mean(ah,axis=0))))
+            print("vel avg",np.array(sorted(np.mean(bh,axis=0))))
+
