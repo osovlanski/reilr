@@ -12,7 +12,7 @@ alpha = 0.02
 max_steps_in_episode = 500
 total_max_steps = 10000
 episodes = 10000
-gamma = 0.95
+gamma = 1
 epsilon_max = 0.1
 epsilon_min = 0.005
 _lambda = 0.5
@@ -72,12 +72,12 @@ def normalize_state(state):
     p_n = (p-env.observation_space.low[0]) / (env.observation_space.high[0] - env.observation_space.low[0])
     v_n = (v-env.observation_space.low[1]) / (env.observation_space.high[1] - env.observation_space.low[1])
 
-    return p_n,v_n
+    return p_n, v_n
 
 
 # p,v should be normalized
 def get_Q(features, W):
-    return np.array([features @ W[:,a] for a in range(ACTION_NO)])
+    return np.array([features @ W[:, a] for a in range(ACTION_NO)])
 
 
 def get_Q_a(features, W_a):
@@ -102,7 +102,7 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps_in_episode, is_savi
         E = init_E()
         state = normalize_state(env.reset()) 
         features = get_features(state)
-        action = eps_greedy_policy(epsilon,get_Q(features,W))
+        action = eps_greedy_policy(epsilon, get_Q(features, W))
 
         for step in range(max_steps):
             total_steps += 1
@@ -121,7 +121,6 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps_in_episode, is_savi
                 delta_error = reward + gamma * next_Q_p_v_a - curr_Q_p_v_a
 
             stochasticGradient = features
-            # E[:, action] +=  stochasticGradient  # accumulating traces
             E[:, action] = stochasticGradient  # replacing traces
            
             deltaW = (np.multiply(alpha*delta_error, E))
@@ -137,7 +136,6 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps_in_episode, is_savi
                     with open(BEST_WEIGHTS_PATH, 'wb') as fd:
                         fd.write(pickle.dumps(W))
 
-            state = new_state
             action = new_action
             features = new_features.copy()
 
