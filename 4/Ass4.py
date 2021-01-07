@@ -7,7 +7,6 @@ import pickle
 
 np.set_printoptions(precision=2)
 
-alpha = 0.02
 max_steps_in_episode = 500
 total_max_steps = 10000
 episodes = 10000
@@ -33,8 +32,8 @@ N = len(C_P) * len(C_VEL)
 prod = product(C_P, C_VEL)
 C = [np.array(val).reshape((1, -1)) for val in prod]
 
-alpha_theta = 111111111
-alpha_w = 11111111
+alpha = 111111111
+beta = 11111111
 
 
 def init_weights():
@@ -64,7 +63,7 @@ def get_features_actor(state, action):
 
     action_vector = np.zeros(env.action_space.n)
     action_vector[action] = 1
-    features_actor = action_vector @ features_critic
+    features_actor = action_vector @ np.array([features_critic for _ in range(env.action_space.n)])
     return features_actor
 
 
@@ -94,6 +93,15 @@ def get_Q_a(features, W_a):
     return features @ W_a
 
 
+def softmax_policy(state, action, theta):
+    features_t = get_features_actor(state, action).reshape(-1, 1).T
+    up_side = np.exp(features_t * theta)
+    arr_inside_sum = np.array([np.exp(get_features_actor(state, action).reshape(-1, 1).T * theta) for action in range(env.action_space.n)])
+    arr_inside_sum = np.squeeze(arr_inside_sum)
+    down_side = np.sum(arr_inside_sum, axis=1)
+    return np.squeeze(up_side / down_side)
+
+
 def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=alpha, beta=beta):
     # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3)
     W = init_weights()
@@ -106,25 +114,32 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
         # init S,A
         state = normalize_state(env.reset())
         features = get_features_critic(state)
-        l = 1
+        # is this line correct?
+        action = eps_greedy_policy(epsilon, get_Q(features, W))
 
         for step in range(max_steps):
             total_steps += 1
 
-            action = eps_greedy_policy(epsilon, get_Q(features, W))
+            #policy = softmax_policy(state, action, theta)
+            #action = eps_greedy_policy(epsilon, policy)
 
             new_state, reward, done, _ = env.step(action)
-            new_features = get_features_critic(new_state)
-            new_action = eps_greedy_policy(epsilon, get_Q(new_features, W))
 
+            policy = softmax_policy(state, action, theta)
+            new_action = eps_greedy_policy(epsilon, policy)
+
+            new_features = get_features_critic(new_state)
             curr_Q_p_v_a = get_Q_a(features, W[:, action])
             next_Q_p_v_a = get_Q_a(new_features, W[:, new_action])
 
             delta = reward + gamma * next_Q_p_v_a - curr_Q_p_v_a
-            gradient = get_features_actor(state, action) - np.sum(np.array([None * get_features_actor(state, action) for action in env.action_space.n]))
+
+            gradient = get_features_actor(state, action) - np.sum(np.array([softmax_policy(state, action, theta) @
+                                                                            get_features_actor(state, action) for action
+                                                                            in range(env.action_space.n)]))
 
             theta += alpha * delta * gradient
-            W += (beta * delta) @ features
+            W[:, new_action] = W[:, new_action] + beta * delta * features
 
             action = new_action
             features = new_features.copy()
@@ -245,7 +260,7 @@ def show_sim_in_env(env, W):
 def run_and_create_plot(env):
     env.reset()
 
-    W, policy_vals = sarsa_lambda(env, episodes, max_steps_in_episode, alpha=alpha, _lambda=_lambda)
+    W, policy_vals = actor_critic(env, episodes, max_steps_in_episode, alpha=alpha, beta=beta)
     # show_sim_in_env(env, W)
 
     plt.figure(figsize=(12, 7))
@@ -261,10 +276,7 @@ if __name__ == '__main__':
     env = gym.make('MountainCar-v0')
     env._max_episode_steps = 500
 
-    with open(BEST_WEIGHTS_PATH, 'rb') as fd:
-        prev_good_W = pickle.loads(fd.read())
-
-    show_sim_in_env(env, prev_good_W)
+    # show_sim_in_env(env)
 
     print('calculating policy... (may take a few minutes)')
     run_and_create_plot(env)
