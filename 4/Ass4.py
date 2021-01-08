@@ -95,17 +95,21 @@ def get_Q_a(features, W_a):
 
 def softmax_policy(state, action, theta):
     features_t = get_features_actor(state, action).reshape(-1, 1).T
-    up_side = np.exp(features_t * theta)
-    arr_inside_sum = np.array([np.exp(get_features_actor(state, action).reshape(-1, 1).T * theta) for action in range(env.action_space.n)])
+
+    arr_up_before = [get_features_actor(state, action).reshape(-1, 1).T @ theta for action in range(env.action_space.n)]
+    max_val = np.max(arr_up_before)
+
+    up_side = np.exp((features_t @ theta) - max_val)
+    arr_inside_sum = np.array([np.exp(val - max_val) for val in arr_up_before])
     arr_inside_sum = np.squeeze(arr_inside_sum)
-    down_side = np.sum(arr_inside_sum, axis=1)
+    down_side = np.sum(arr_inside_sum)
     return np.squeeze(up_side / down_side)
 
 
 def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=alpha, beta=beta):
     # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3)
     W = init_weights()
-    theta = 0
+    theta = np.zeros((N,))
     total_steps = 0
     epsilon = epsilon_max
     policy_vals = []
@@ -118,6 +122,7 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
         action = eps_greedy_policy(epsilon, get_Q(features, W))
 
         for step in range(max_steps):
+            print(total_steps)
             total_steps += 1
 
             #policy = softmax_policy(state, action, theta)
@@ -125,8 +130,8 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
 
             new_state, reward, done, _ = env.step(action)
 
-            policy = softmax_policy(state, action, theta)
-            new_action = eps_greedy_policy(epsilon, policy)
+            policy = np.array([softmax_policy(state, action, theta) for action in range(env.action_space.n)])
+            new_action = np.random.choice(list(range(env.action_space.n)), p=policy)
 
             new_features = get_features_critic(new_state)
             curr_Q_p_v_a = get_Q_a(features, W[:, action])
@@ -134,12 +139,17 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
 
             delta = reward + gamma * next_Q_p_v_a - curr_Q_p_v_a
 
-            gradient = get_features_actor(state, action) - np.sum(np.array([softmax_policy(state, action, theta) @
+            gradient = get_features_actor(state, action) - np.sum(np.array([softmax_policy(state, action, theta) *
                                                                             get_features_actor(state, action) for action
                                                                             in range(env.action_space.n)]))
 
             theta += alpha * delta * gradient
             W[:, new_action] = W[:, new_action] + beta * delta * features
+
+            if total_steps % 5000 == 0:
+                policy_evaluate = policy_eval(W, env, with_discount=EVAL_WITH_DISCOUNT)
+                policy_vals.append((total_steps, policy_evaluate))
+                print(f'done {total_steps} steps, current policy value is {policy_evaluate}')
 
             action = new_action
             features = new_features.copy()
