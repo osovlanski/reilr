@@ -122,7 +122,6 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
         action = eps_greedy_policy(epsilon, get_Q(features, W))
 
         for step in range(max_steps):
-            print(total_steps)
             total_steps += 1
 
             #policy = softmax_policy(state, action, theta)
@@ -146,7 +145,8 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
             theta += alpha * delta * gradient
             W[:, new_action] = W[:, new_action] + beta * delta * features
 
-            if total_steps % 1000 == 0:
+            if total_steps % 5000 == 0:
+                print(total_steps)
                 policy_evaluate = policy_eval(W, env, with_discount=EVAL_WITH_DISCOUNT)
                 policy_vals.append((total_steps, policy_evaluate))
                 print(f'done {total_steps} steps, current policy value is {policy_evaluate}')
