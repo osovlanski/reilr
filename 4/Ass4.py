@@ -8,7 +8,7 @@ import pickle
 np.set_printoptions(precision=2)
 
 max_steps_in_episode = 500
-total_max_steps = 10000
+total_max_steps = 30000
 episodes = 10000
 gamma = 1
 epsilon_max = 0.1
@@ -19,6 +19,7 @@ EVAL_WITH_DISCOUNT = False
 ACTION_NO = 3
 
 BEST_WEIGHTS_PATH = 'prev_calculated_good_weights.pkl'
+
 
 # -1.2 is the leftest position.
 # The env starts at a location between -0.6 and -0.4 randomly.
@@ -32,15 +33,11 @@ N = len(C_P) * len(C_VEL)
 prod = product(C_P, C_VEL)
 C = [np.array(val).reshape((1, -1)) for val in prod]
 
-alpha = 0.2
-beta = 0.2
+alpha = 0.1
+beta = 0.1
 
 
 def init_weights():
-    return np.zeros((N, ACTION_NO))
-
-
-def init_E():
     return np.zeros((N, ACTION_NO))
 
 
@@ -106,7 +103,8 @@ def softmax_policy(state, action, theta):
     return np.squeeze(up_side / down_side)
 
 
-def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=alpha, beta=beta):
+def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=alpha, beta=beta,
+                 is_saving_weights=False):
     # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3)
     W = init_weights()
     theta = np.zeros((N,))
@@ -114,18 +112,18 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
     epsilon = epsilon_max
     policy_vals = []
 
+    if is_saving_weights:
+        best_policy_val = -600  # the min value of the env is -500
+
     for k in range(episodes):
         # init S,A
         state = normalize_state(env.reset())
         features = get_features_critic(state)
-        # is this line correct?
+
         action = eps_greedy_policy(epsilon, get_Q(features, W))
 
         for step in range(max_steps):
             total_steps += 1
-
-            #policy = softmax_policy(state, action, theta)
-            #action = eps_greedy_policy(epsilon, policy)
 
             new_state, reward, done, _ = env.step(action)
 
@@ -145,63 +143,14 @@ def actor_critic(env, episodes=episodes, max_steps=max_steps_in_episode, alpha=a
             theta += alpha * delta * gradient
             W[:, new_action] = W[:, new_action] + beta * delta * features
 
-            if total_steps % 5000 == 0:
+            if total_steps % 3000 == 0:
                 print(total_steps)
                 policy_evaluate = policy_eval(W, env, with_discount=EVAL_WITH_DISCOUNT)
                 policy_vals.append((total_steps, policy_evaluate))
                 print(f'done {total_steps} steps, current policy value is {policy_evaluate}')
 
-            action = new_action
-            features = new_features.copy()
-
-            if done:
-                break
-
-
-def sarsa_lambda(env, episodes=episodes, max_steps=max_steps_in_episode, is_saving_weights=False,
-                 epsilon_max=epsilon_max, epsilon_min=epsilon_min, is_decay=False, _lambda=_lambda, alpha=alpha):
-    # (p,v,a) = (p,v,i) @ (i,a) => the shape of W should be (i,a): (32,3)
-    W = init_weights()
-    total_steps = 0
-    epsilon = epsilon_max
-    policy_vals = []
-
-    for k in range(episodes):
-        # init E,S,A
-        E = init_E()
-        state = normalize_state(env.reset())
-        features = get_features_critic(state)
-        action = eps_greedy_policy(epsilon, get_Q(features, W))
-
-        for step in range(max_steps):
-            total_steps += 1
-
-            # Take action A, obvserve R,S'
-            new_state, reward, done, _ = env.step(action)
-            new_state = normalize_state(new_state)
-            new_features = get_features_critic(new_state)
-            new_action = eps_greedy_policy(epsilon, get_Q(new_features, W))
-            curr_Q_p_v_a = get_Q_a(features, W[:, action])
-            next_Q_p_v_a = get_Q_a(new_features, W[:, new_action])
-
-            if done:
-                delta_error = reward - curr_Q_p_v_a
-            else:
-                delta_error = reward + gamma * next_Q_p_v_a - curr_Q_p_v_a
-
-            stochasticGradient = features
-            E[:, action] = stochasticGradient  # replacing traces
-
-            deltaW = (np.multiply(alpha * delta_error, E))
-            W += deltaW
-            E = np.multiply(gamma * _lambda, E)
-
-            if total_steps % 500 == 0:
-                policy_evaluate = policy_eval(W, env, with_discount=EVAL_WITH_DISCOUNT)
-                policy_vals.append((total_steps, policy_evaluate))
-                print(f'done {total_steps} steps, current policy value is {policy_evaluate}')
-
                 if is_saving_weights and policy_evaluate > best_policy_val:
+                    best_policy_val = policy_evaluate
                     with open(BEST_WEIGHTS_PATH, 'wb') as fd:
                         fd.write(pickle.dumps(W))
 
@@ -210,9 +159,6 @@ def sarsa_lambda(env, episodes=episodes, max_steps=max_steps_in_episode, is_savi
 
             if done:
                 break
-
-        if is_decay:
-            epsilon = epsilon_min + (epsilon_max - epsilon_min) * np.exp(-0.005 * k)
 
         if total_steps > total_max_steps:
             break
@@ -278,7 +224,7 @@ def run_and_create_plot(env):
 
     plt.xlabel('number of steps')
     plt.ylabel('mean reward')
-    plt.title('Reward As A Function of Number of Steps')
+    plt.title('Reward As a Function of Number of Steps')
     plt.show()
 
 
@@ -286,7 +232,9 @@ if __name__ == '__main__':
     env = gym.make('MountainCar-v0')
     env._max_episode_steps = 500
 
-    # show_sim_in_env(env)
+    with open(BEST_WEIGHTS_PATH, 'rb') as fd:
+        prev_good_W = pickle.loads(fd.read())
+    show_sim_in_env(env, prev_good_W)
 
     print('calculating policy... (may take a few minutes)')
     run_and_create_plot(env)
